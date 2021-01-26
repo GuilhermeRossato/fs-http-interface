@@ -23,9 +23,10 @@ Returns a single digit: `0` if the path is not a file or does not exist and `1` 
 ### Check if a directory exists
 
 http://localhost:8084/directory/exists/?path=C:\Program%20Files
-http://localhost:8084/folder/exists/?path=C:\Program%20Files
 
 Returns a single digit: `0` if the path is not a folder or does not exist and `1` if it exists and is a file.
+
+As typos are frequent, you can use [/folder/exists/](http://localhost:8084/folder/exists/?path=C:\Program%20Files) too.
 
 ### Check if there's a file or a directory (or anything) in a path
 
