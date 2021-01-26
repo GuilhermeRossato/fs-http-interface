@@ -68,6 +68,34 @@ int does_path_exists(char* path) {
 	return (dwAttrib != INVALID_FILE_ATTRIBUTES);
 }
 
+int64_t get_file_size(char* path)
+{
+	wide_char_array[0] = '\0';
+	convert_char_array_to_LPCWSTR(path, wide_char_array, WIDE_CHAR_ARRAY_SIZE);
+    HANDLE fp = CreateFileW(
+		wide_char_array,
+		GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+		NULL,
+		OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+		NULL
+	);
+    if (fp == INVALID_HANDLE_VALUE)
+        return -__LINE__;
+
+    LARGE_INTEGER size;
+    if (!GetFileSizeEx(fp, &size))
+    {
+        CloseHandle(fp);
+        return -__LINE__;
+    }
+
+    CloseHandle(fp);
+    return size.QuadPart;
+}
+
+
 #define MAX_HTTP_HEADER_POINTERS 128
 
 struct http_request_t {
@@ -97,6 +125,40 @@ char * get_parameter_from_request(struct http_request_t * request, const char * 
 	return NULL;
 }
 
+int read_file_into_buffer(
+	char * path,
+	/* OUT */ char * buffer,
+	size_t buffer_max_size,
+	/* OUT */ size_t * buffer_length
+) {
+    DWORD bytes_read = 0;
+
+	wide_char_array[0] = '\0';
+	convert_char_array_to_LPCWSTR(path, wide_char_array, WIDE_CHAR_ARRAY_SIZE);
+    HANDLE fp = CreateFileW(
+		wide_char_array,
+		GENERIC_READ, // open for reading
+        FILE_SHARE_READ, // share for reading
+		NULL, // default security
+		OPEN_EXISTING, // existing  file only
+        FILE_ATTRIBUTE_NORMAL, // normal file
+		NULL // no template
+	);
+	if (fp == INVALID_HANDLE_VALUE) {
+		return -1;
+	}
+	if (ReadFile(fp, buffer, (buffer_max_size-1), &bytes_read, NULL) == FALSE) {
+        CloseHandle(fp);
+        return -2;
+    }
+	if (bytes_read+1 < buffer_max_size) {
+		buffer[bytes_read+1] = '\0'; // Just to make sure
+	}
+	*buffer_length = bytes_read;
+    CloseHandle(fp);
+	return 1;
+}
+
 /**
  * Returns positive for success
  * Returns negative for errors
@@ -122,6 +184,33 @@ int process_and_reply(
 			}
 			int veredict = is_path_file(path);
 			*reply_length = snprintf(reply, reply_max_size, "%d", veredict);
+			return 1;
+		}
+
+		if (strcmp(request->path, "/file/size/") == 0) {
+			if (path == NULL) {
+				*reply_length = snprintf(reply, reply_max_size, "Error: Missing \"path\" parameter");
+				return 1;
+			}
+			if (is_path_file(path)) {
+				return 0;
+			}
+			int64_t size = get_file_size(path);
+			if (size < 0 && ((int) size) < 0) {
+				return (int) size;
+			}
+			*reply_length = snprintf(reply, reply_max_size, "%" PRId64, size);
+			return 1;
+		}
+
+		if (strcmp(request->path, "/file/contents/") == 0) {
+			if (path == NULL) {
+				*reply_length = snprintf(reply, reply_max_size, "Error: Missing \"path\" parameter");
+				return 1;
+			}
+			if (!read_file_into_buffer(path, reply, reply_max_size, reply_length)) {
+				return 0;
+			}
 			return 1;
 		}
 
@@ -544,7 +633,7 @@ int main(int argn, char ** argc) {
 				snprintf(
 					content_buffer,
 					sizeof(content_buffer),
-					"Call to \"process_and_reply\" returned %d\r\n",
+					"Error: Call to \"process_and_reply\" returned %d\r\n",
 					result
 				),
 				content_buffer

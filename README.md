@@ -34,10 +34,21 @@ http://localhost:8084/path/exists/?path=C:\Program%20Files\
 
 Returns a single digit: `0` if the win32 file stat fails or `1` if it succeeds.
 
+### Read a file contents
+
+http://localhost:8084/file/contents/?path=C:\Users\gui_r\dev\fs-http-interface\readme.md
+
+Content-Length will be the exact file size. The result will be either:
+    - a `404 Not Found when the` file was not found
+    - a `500 Internal Server Error` when there's an error reading the file
+    - a `200 OK` with the file contents as raw bytes in the HTTP body
+
+Obs: As of now the maximum file size is roughly 1 MB, you can change the `OUTPUT_BUFFER_SIZE` to increase it.
+
 ## Security
 
-Do not leave this running on your computer unattended. A connected computer with access to your network can do all sorts of evils.
+Do not leave this running on your computer unattended. A connected computer with access to your network can read and write all sorts of files.
 
 ## Disclaimer
 
-The project is unfinished, I do not make any warranty about the working state of the software included in this repository. I also shall not be responsible for any harm the use of the software might cause.
+The project is unfinished. I do not make any warranty about the working state of the software included in this repository. I shall not be responsible for any harm the use of the software might cause.
