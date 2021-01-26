@@ -270,6 +270,11 @@ int parse_http_request(struct http_request_t * output, char * recv, int recv_len
 	return 1;
 }
 
+/**
+ * Returns positive for success
+ * Returns negative for errors
+ * Returns zero for not found
+ */
 int process_and_reply(
 	struct http_request_t * request,
 	/* OUT */ char * reply,
@@ -278,14 +283,13 @@ int process_and_reply(
 ) {
 	if (strcmp(request->method, "GET") == 0) {
 		if (strcmp(request->path, "/") == 0) {
-			return -1;
+			return 0;
 		}
-		return -2;
+		if (strcmp(request->path, "/file/") == 0) {
+			*reply_length = snprintf(reply, reply_max_size, "Welcome to my website!");
+		}
 	}
-	if (strcmp(request->method, "POST") == 0) {
-		return -3;
-	}
-	return -4;
+	return 0;
 }
 
 int main(int argn, char ** argc) {
@@ -449,7 +453,7 @@ int main(int argn, char ** argc) {
 				"Connection: close\r\n"
 				"\r\n"
 				"%s",
-				"500 Internal Server Error",
+				result == 0 ? "404 Not Found" : "500 Internal Server Error",
 				snprintf(
 					content_buffer,
 					sizeof(content_buffer),
