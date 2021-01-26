@@ -30,22 +30,42 @@
 #include "./separate_string_by_char.cpp"
 #include "./str_index_of.cpp"
 
-int is_path_directory(const char* path) {
-    FILE *f = fopen(path, "r+");
-    if (f) {
-        fclose(f);
-        return 0;
-    }
-    return errno == EISDIR;
+void convert_char_array_to_LPCWSTR(const char* char_array, LPCWSTR wide_char_array, int wide_char_array_size) {
+    MultiByteToWideChar(CP_ACP, 0, char_array, -1, (wchar_t*) wide_char_array, wide_char_array_size);
 }
 
-int is_path_file(char * path) {
-	FILE *file;
-    if ((file = fopen(path,"r")) == NULL) {
-		return 0;
-	}
-	fclose(file);
-	return 1;
+#define WIDE_CHAR_ARRAY_SIZE 4096
+
+wchar_t * wide_char_array = new wchar_t[WIDE_CHAR_ARRAY_SIZE];
+
+int is_path_directory(char* path) {
+	wide_char_array[0] = '\0';
+	convert_char_array_to_LPCWSTR(path, wide_char_array, WIDE_CHAR_ARRAY_SIZE);
+	DWORD dwAttrib = GetFileAttributesW(wide_char_array);
+
+	return (
+		(dwAttrib != INVALID_FILE_ATTRIBUTES) &&
+		(dwAttrib & FILE_ATTRIBUTE_DIRECTORY)
+	);
+}
+
+int is_path_file(char* path) {
+	wide_char_array[0] = '\0';
+	convert_char_array_to_LPCWSTR(path, wide_char_array, WIDE_CHAR_ARRAY_SIZE);
+	DWORD dwAttrib = GetFileAttributesW(wide_char_array);
+
+	return (
+		(dwAttrib != INVALID_FILE_ATTRIBUTES) &&
+		!(dwAttrib & FILE_ATTRIBUTE_DIRECTORY)
+	);
+}
+
+int does_path_exists(char* path) {
+	wide_char_array[0] = '\0';
+	convert_char_array_to_LPCWSTR(path, wide_char_array, WIDE_CHAR_ARRAY_SIZE);
+	DWORD dwAttrib = GetFileAttributesW(wide_char_array);
+
+	return (dwAttrib != INVALID_FILE_ATTRIBUTES);
 }
 
 #define MAX_HTTP_HEADER_POINTERS 128
@@ -100,7 +120,27 @@ int process_and_reply(
 				*reply_length = snprintf(reply, reply_max_size, "Error: Missing \"path\" parameter");
 				return 1;
 			}
-			int veredict = !is_path_directory(path) && is_path_file(path);
+			int veredict = is_path_file(path);
+			*reply_length = snprintf(reply, reply_max_size, "%d", veredict);
+			return 1;
+		}
+
+		if (strcmp(request->path, "/directory/exists/") == 0 || strcmp(request->path, "/folder/exists/") == 0) {
+			if (path == NULL) {
+				*reply_length = snprintf(reply, reply_max_size, "Error: Missing \"path\" parameter");
+				return 1;
+			}
+			int veredict = is_path_directory(path);
+			*reply_length = snprintf(reply, reply_max_size, "%d", veredict);
+			return 1;
+		}
+
+		if (strcmp(request->path, "/path/exists/") == 0) {
+			if (path == NULL) {
+				*reply_length = snprintf(reply, reply_max_size, "Error: Missing \"path\" parameter");
+				return 1;
+			}
+			int veredict = does_path_exists(path);
 			*reply_length = snprintf(reply, reply_max_size, "%d", veredict);
 			return 1;
 		}

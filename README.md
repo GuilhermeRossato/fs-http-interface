@@ -14,11 +14,24 @@ Check the standard output if anything went wrong, the program should be very ver
 
 ## Feature examples
 
-### Check if file exists
+### Check if a file exists
 
 http://localhost:8084/file/exists/?path=C:/pagefile.sys
 
 Returns a single digit: `0` if the path is not a file or does not exist and `1` if it exists and is a file.
+
+### Check if a directory exists
+
+http://localhost:8084/directory/exists/?path=C:\Program%20Files
+http://localhost:8084/folder/exists/?path=C:\Program%20Files
+
+Returns a single digit: `0` if the path is not a folder or does not exist and `1` if it exists and is a file.
+
+### Check if there's a file or a directory (or anything) in a path
+
+http://localhost:8084/path/exists/?path=C:\Program%20Files\
+
+Returns a single digit: `0` if the win32 file stat fails or `1` if it succeeds.
 
 ## Security
 
