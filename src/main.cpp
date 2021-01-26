@@ -230,7 +230,6 @@ int read_directory_into_buffer(
 				}
 			}
 			if (show_size) {
-				i += snprintf(&buffer[i], buffer_max_size - 32 - i, "0 ");
 				filesize.LowPart = ffd.nFileSizeLow;
 				filesize.HighPart = ffd.nFileSizeHigh;
 				i += snprintf(&buffer[i], buffer_max_size - 32 - i, "%llu ", filesize.QuadPart);
@@ -240,8 +239,6 @@ int read_directory_into_buffer(
 			buffer[i] = '\0';
 		}
 	} while (FindNextFileW(fp, (LPWIN32_FIND_DATAW) &ffd) != 0);
-
-	printf("buffer %s\n", buffer);
 
 	*buffer_length = i;
 
@@ -271,7 +268,7 @@ char * get_parameter_from_request(struct http_request_t * request, const char * 
 	for (int i = 0; i < request->parameters_size; i++) {
 		if (does_first_start_with_second(request->parameters[i], parameter)) {
 			int s = strlen(parameter);
-			if (s < 128 && parameter[s] == '\0' && request->parameters[i][s] == '=') {
+			if (s < 128 && parameter[s] == '\0' && (request->parameters[i][s] == '=' || request->parameters[i][s] == '\0')) {
 				return ((char *) request->parameters[i]) + s + 1;
 			}
 		}

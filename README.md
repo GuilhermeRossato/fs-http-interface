@@ -55,6 +55,59 @@ Note that since your browser will probably interpret it as HTML, it will look li
 
 You can also use [/folder/contents/](http://localhost:8084/folder/contents/?path=C:\Program%20Files).
 
+If you want to know what is the **type** of each file you can add the `type` parameter:
+
+http://localhost:8084/folder/contents/?type&path=.
+
+The first character of each line is F or D, indicating File or Directory.
+
+```
+D .
+D ..
+D .git
+F .gitignore
+D build
+F compile-windows-loop.bat
+F main.obj
+F readme.md
+D src
+
+```
+
+If you want to know what is the **size** (or length) of each file (in bytes) you can add the `size` parameter:
+
+http://localhost:8084/folder/contents/?size&path=.
+
+The first space in the line separates the byte amount (digits) and the file name. Note that the file name might contain spaces (but not newlines).
+
+```
+0 .
+0 ..
+0 .git
+32 .gitignore
+0 build
+907 compile-windows-loop.bat
+34501 main.obj
+3843 readme.md
+0 src
+
+```
+
+You can also combine **size** and **type** parameters to get both information:
+
+```
+D 0 .
+D 0 ..
+D 0 .git
+F 32 .gitignore
+D 0 build
+F 907 compile-windows-loop.bat
+F 34501 main.obj
+F 3843 readme.md
+D 0 src
+
+```
+
 ### Check if there's a file or a directory (or anything) in a path
 
 http://localhost:8084/path/exists/?path=C:\Program%20Files\
