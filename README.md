@@ -1,4 +1,4 @@
-# File system control via HTTP [Unfinished]
+# File system control via HTTP [Partially implemented]
 
 This repository is a project for compiling a program to manipulate file system and disk data via HTTP requests.
 
@@ -14,7 +14,11 @@ Check the standard output if anything went wrong, the program should be very ver
 
 ## Feature examples
 
-None as of now.
+### Check if file exists
+
+http://localhost:8084/file/exists/?file=C:/pagefile.sys
+
+Returns a page with either `0` or `1` as content indicating if the file exists in your computer
 
 ## Security
 
