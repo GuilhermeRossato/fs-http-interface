@@ -20,23 +20,15 @@ http://localhost:8084/file/exists/?path=C:/pagefile.sys
 
 Returns a single digit: `0` if the path is not a file or does not exist and `1` if it exists and is a file.
 
-### Check if a directory exists
+### Read a file size
 
-http://localhost:8084/directory/exists/?path=C:\Program%20Files
+http://localhost:8084/file/size/?path=C:\pagefile.sys
 
-Returns a single digit: `0` if the path is not a folder or does not exist and `1` if it exists and is a file.
-
-As typos are frequent, you can use [/folder/exists/](http://localhost:8084/folder/exists/?path=C:\Program%20Files) too.
-
-### Check if there's a file or a directory (or anything) in a path
-
-http://localhost:8084/path/exists/?path=C:\Program%20Files\
-
-Returns a single digit: `0` if the win32 file stat fails or `1` if it succeeds.
+Returns the size of a file (digits) in the body of the message, unless it doesnt exists in which case returns 404 error.
 
 ### Read a file contents
 
-http://localhost:8084/file/contents/?path=C:\Users\gui_r\dev\fs-http-interface\readme.md
+http://localhost:8084/file/contents/?path=C:\Program Files (x86)\Git\magic.py
 
 Content-Length will be the exact file size. The result will be either:
     - a `404 Not Found when the` file was not found
@@ -44,6 +36,30 @@ Content-Length will be the exact file size. The result will be either:
     - a `200 OK` with the file contents as raw bytes in the HTTP body
 
 Obs: As of now the maximum file size is roughly 1 MB, you can change the `OUTPUT_BUFFER_SIZE` to increase it.
+
+### Check if a directory exists
+
+http://localhost:8084/directory/exists/?path=C:\Program%20Files
+
+Returns a single digit: `0` if the path is not a folder or does not exist and `1` if it exists and is a file.
+
+You can also use [/folder/exists/](http://localhost:8084/folder/exists/?path=C:\Program%20Files).
+
+### Read the folder contents (files and folders)
+
+http://localhost:8084/directory/contents/?path=C:\Program%20Files
+
+Returns files and directories inside the folder separated by a single newline with a trailing newline at the end.
+
+Note that since your browser will probably interpret it as HTML, it will look like a single line in the browser.
+
+You can also use [/folder/contents/](http://localhost:8084/folder/contents/?path=C:\Program%20Files).
+
+### Check if there's a file or a directory (or anything) in a path
+
+http://localhost:8084/path/exists/?path=C:\Program%20Files\
+
+Returns a single digit: `0` if the win32 file stat fails or `1` if it succeeds.
 
 ## Security
 

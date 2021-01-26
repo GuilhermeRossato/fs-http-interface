@@ -30,8 +30,11 @@
 #include "./separate_string_by_char.cpp"
 #include "./str_index_of.cpp"
 
-void convert_char_array_to_LPCWSTR(const char* char_array, LPCWSTR wide_char_array, int wide_char_array_size) {
-    MultiByteToWideChar(CP_ACP, 0, char_array, -1, (wchar_t*) wide_char_array, wide_char_array_size);
+/**
+ * Return the number of characters (not bytes) written to buffer
+ */
+int convert_char_array_to_LPCWSTR(const char* char_array, LPCWSTR wide_char_array, int wide_char_array_size) {
+    return MultiByteToWideChar(CP_ACP, 0, char_array, -1, (wchar_t*) wide_char_array, wide_char_array_size);
 }
 
 #define WIDE_CHAR_ARRAY_SIZE 4096
@@ -53,7 +56,7 @@ int is_path_file(char* path) {
 	wide_char_array[0] = '\0';
 	convert_char_array_to_LPCWSTR(path, wide_char_array, WIDE_CHAR_ARRAY_SIZE);
 	DWORD dwAttrib = GetFileAttributesW(wide_char_array);
-
+	// printf("%d %d %d\n", (int) dwAttrib, (int) INVALID_FILE_ATTRIBUTES, (int) (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 	return (
 		(dwAttrib != INVALID_FILE_ATTRIBUTES) &&
 		!(dwAttrib & FILE_ATTRIBUTE_DIRECTORY)
@@ -68,8 +71,7 @@ int does_path_exists(char* path) {
 	return (dwAttrib != INVALID_FILE_ATTRIBUTES);
 }
 
-int64_t get_file_size(char* path)
-{
+int64_t get_file_size(char* path) {
 	wide_char_array[0] = '\0';
 	convert_char_array_to_LPCWSTR(path, wide_char_array, WIDE_CHAR_ARRAY_SIZE);
     HANDLE fp = CreateFileW(
@@ -93,36 +95,6 @@ int64_t get_file_size(char* path)
 
     CloseHandle(fp);
     return size.QuadPart;
-}
-
-
-#define MAX_HTTP_HEADER_POINTERS 128
-
-struct http_request_t {
-	char * method;
-	int method_length;
-	char * path;
-	int path_length;
-	char * fragment;
-	int fragment_length;
-	char * parameters[MAX_HTTP_HEADER_POINTERS];
-	int parameters_size;
-	char * headers[MAX_HTTP_HEADER_POINTERS];
-	int headers_size;
-	char * body;
-	int body_size;
-} http_request_t;
-
-char * get_parameter_from_request(struct http_request_t * request, const char * parameter) {
-	for (int i = 0; i < request->parameters_size; i++) {
-		if (does_first_start_with_second(request->parameters[i], parameter)) {
-			int s = strlen(parameter);
-			if (s < 128 && parameter[s] == '\0' && request->parameters[i][s] == '=') {
-				return ((char *) request->parameters[i]) + s + 1;
-			}
-		}
-	}
-	return NULL;
 }
 
 int read_file_into_buffer(
@@ -157,6 +129,154 @@ int read_file_into_buffer(
 	*buffer_length = bytes_read;
     CloseHandle(fp);
 	return 1;
+}
+
+void print_wide_char(wchar_t * text, int max_size) {
+	char * bytes = (char *) text;
+	for (int i = 0; i < max_size; i+=2) {
+		if (bytes[i] == '\0') {
+			break;
+		}
+		if (bytes[i+1] != 0) {
+			printf("?");
+		} else {
+			printf("%c", bytes[i]);
+		}
+	}
+	printf("\n");
+}
+
+int write_char_array_from_wchar_array(char * output, int max_output_size, wchar_t * wchar_array) {
+	char * bytes = (char *) wchar_array;
+	int i;
+	for (i = 0; i < max_output_size; i++) {
+		if (bytes[i * 2] == '\0' && bytes[i * 2 + 1] == '\0') {
+			output[i] = '\0';
+			break;
+		}
+		if (bytes[i * 2 + 1] != '\0') {
+			output[i] = '?'; // Can't represent value in char array
+			continue;
+		}
+		// Yes, it is that easy.
+		output[i] = bytes[i * 2];
+	}
+	return i;
+}
+
+int read_directory_into_buffer(
+	char * path,
+	int show_type,
+	int show_size,
+	/* OUT */ char * buffer,
+	size_t buffer_max_size,
+	/* OUT */ size_t * buffer_length
+) {
+	int bytes = convert_char_array_to_LPCWSTR(path, wide_char_array, WIDE_CHAR_ARRAY_SIZE);
+
+	if (wide_char_array[bytes-1] != '\0') {
+		return -1;
+	}
+	if (bytes + 5 >= WIDE_CHAR_ARRAY_SIZE) {
+		return -2;
+	}
+
+	bytes--;
+	if (wide_char_array[bytes-1] != '/' && wide_char_array[bytes-1] != '\\') {
+		wide_char_array[bytes++] = '/';
+	}
+	wide_char_array[bytes++] = '*';
+	wide_char_array[bytes++] = '\0';
+	wide_char_array[bytes] = '\0';
+
+	WIN32_FIND_DATA ffd;
+   	HANDLE fp = FindFirstFileW((LPCWSTR) wide_char_array, (LPWIN32_FIND_DATAW) &ffd);
+
+	if (fp == INVALID_HANDLE_VALUE) {
+		// No files in folder
+		buffer[0] = '\0';
+		*buffer_length = 0;
+		return 1;
+	}
+
+	int i = 0;
+
+   	LARGE_INTEGER filesize;
+
+	int is_first_time = 0;
+
+	do {
+		if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+			if (show_type) {
+				i += snprintf(&buffer[i], buffer_max_size - 32 - i, "D ");
+				if (is_first_time) {
+					ASSERT("snprintf should offset the buffer to index 2", i == 2);
+					is_first_time = 0;
+				}
+			}
+			if (show_size) {
+				i += snprintf(&buffer[i], buffer_max_size - 32 - i, "0 ");
+			}
+
+			i += write_char_array_from_wchar_array(&buffer[i], buffer_max_size - 32 - i, (wchar_t *) ffd.cFileName);
+			buffer[i++] = '\n';
+			buffer[i] = '\0';
+		} else {
+			if (show_type) {
+				i += snprintf(&buffer[i], buffer_max_size - 32 - i, "F ", filesize.QuadPart);
+				if (is_first_time) {
+					ASSERT("snprintf should offset the buffer to index 2", i == 2);
+					is_first_time = 0;
+				}
+			}
+			if (show_size) {
+				i += snprintf(&buffer[i], buffer_max_size - 32 - i, "0 ");
+				filesize.LowPart = ffd.nFileSizeLow;
+				filesize.HighPart = ffd.nFileSizeHigh;
+				i += snprintf(&buffer[i], buffer_max_size - 32 - i, "%llu ", filesize.QuadPart);
+			}
+			i += write_char_array_from_wchar_array(&buffer[i], buffer_max_size - 32 - i, (wchar_t *) ffd.cFileName);
+			buffer[i++] = '\n';
+			buffer[i] = '\0';
+		}
+	} while (FindNextFileW(fp, (LPWIN32_FIND_DATAW) &ffd) != 0);
+
+	printf("buffer %s\n", buffer);
+
+	*buffer_length = i;
+
+   	FindClose(fp);
+	return 1;
+}
+
+
+#define MAX_HTTP_HEADER_POINTERS 128
+
+struct http_request_t {
+	char * method;
+	int method_length;
+	char * path;
+	int path_length;
+	char * fragment;
+	int fragment_length;
+	char * parameters[MAX_HTTP_HEADER_POINTERS];
+	int parameters_size;
+	char * headers[MAX_HTTP_HEADER_POINTERS];
+	int headers_size;
+	char * body;
+	int body_size;
+} http_request_t;
+
+char * get_parameter_from_request(struct http_request_t * request, const char * parameter) {
+	for (int i = 0; i < request->parameters_size; i++) {
+		if (does_first_start_with_second(request->parameters[i], parameter)) {
+			int s = strlen(parameter);
+			if (s < 128 && parameter[s] == '\0' && request->parameters[i][s] == '=') {
+				return ((char *) request->parameters[i]) + s + 1;
+			}
+		}
+	}
+	return NULL;
 }
 
 /**
@@ -209,6 +329,19 @@ int process_and_reply(
 				return 1;
 			}
 			if (!read_file_into_buffer(path, reply, reply_max_size, reply_length)) {
+				return 0;
+			}
+			return 1;
+		}
+
+		if (strcmp(request->path, "/directory/contents/") == 0 || strcmp(request->path, "/folder/contents/") == 0) {
+			if (path == NULL) {
+				*reply_length = snprintf(reply, reply_max_size, "Error: Missing \"path\" parameter");
+				return 1;
+			}
+			char * type = get_parameter_from_request(request, "type");
+			char * size = get_parameter_from_request(request, "size");
+			if (read_directory_into_buffer(path, type != NULL, size != NULL, reply, reply_max_size, reply_length) <= 0) {
 				return 0;
 			}
 			return 1;
