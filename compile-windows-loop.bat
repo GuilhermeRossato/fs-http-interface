@@ -17,8 +17,8 @@ IF %ERRORLEVEL% NEQ 0 (
 )
 :start
 title Compiling and Executing Screen Utility Program
-cl /nologo /MD /Ob0 /O2 ./src/main.cpp /Fe"build/interface.exe" gdi32.lib user32.lib && echo. && "./build/interface.exe"
-: Useful libraries to link in a future  /Dshlwapi /Dole32 /Doleprn /Doleaut32
+cl /nologo /MD /Ob0 /O2 ./src/main.cpp /Fe"build/interface.exe" user32.lib && echo. && "./build/interface.exe"
+: Useful libraries to link in a future gdi32.lib /Dshlwapi /Dole32 /Doleprn /Doleaut32
 title Waiting for key to compile and run again
 echo.
 pause

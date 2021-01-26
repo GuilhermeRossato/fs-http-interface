@@ -12,9 +12,7 @@
 #define OUTPUT_BUFFER_SIZE 1000000
 
 #pragma comment(lib, "ws2_32.lib")
-#pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "user32.lib")
-#pragma comment(lib, "d3d9.lib")
 
 // #define DEBUG
 
