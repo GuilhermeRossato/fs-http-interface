@@ -88,7 +88,7 @@ int process_and_reply(
 	size_t reply_max_size,
 	/* OUT */ size_t * reply_length
 ) {
-	char * file = get_parameter_from_request(request, "file");
+	char * path = get_parameter_from_request(request, "path");
 
 	if (strcmp(request->method, "GET") == 0) {
 		if (strcmp(request->path, "/") == 0) {
@@ -96,11 +96,11 @@ int process_and_reply(
 		}
 
 		if (strcmp(request->path, "/file/exists/") == 0) {
-			if (file == NULL) {
-				*reply_length = snprintf(reply, reply_max_size, "Error: Missing \"file\" parameter");
+			if (path == NULL) {
+				*reply_length = snprintf(reply, reply_max_size, "Error: Missing \"path\" parameter");
 				return 1;
 			}
-			int veredict = !is_path_directory(file) && is_path_file(file);
+			int veredict = !is_path_directory(path) && is_path_file(path);
 			*reply_length = snprintf(reply, reply_max_size, "%d", veredict);
 			return 1;
 		}

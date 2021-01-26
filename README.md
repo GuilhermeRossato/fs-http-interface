@@ -16,9 +16,9 @@ Check the standard output if anything went wrong, the program should be very ver
 
 ### Check if file exists
 
-http://localhost:8084/file/exists/?file=C:/pagefile.sys
+http://localhost:8084/file/exists/?path=C:/pagefile.sys
 
-Returns a page with either `0` or `1` as content indicating if the file exists in your computer
+Returns a single digit: `0` if the path is not a file or does not exist and `1` if it exists and is a file.
 
 ## Security
 
