@@ -32,19 +32,260 @@
 #include "./separate_string_by_char.cpp"
 #include "./str_index_of.cpp"
 
+#define MAX_HTTP_HEADER_POINTERS 128
+
+struct http_request_t {
+	char * method;
+	int method_length;
+	char * path;
+	int path_length;
+	char * fragment;
+	int fragment_length;
+	char * parameters[MAX_HTTP_HEADER_POINTERS];
+	int parameters_size;
+	char * headers[MAX_HTTP_HEADER_POINTERS];
+	int headers_size;
+	char * body;
+	int body_size;
+} http_request_t;
+
+/**
+ * Parses an HTTP request and writes the parts in the output
+ * Obs: This overwrites some bytes in the recv buffer and assigns it to output.
+ * Do not free recv while using the http_request_t structure.
+ *
+ * Returns 1 if successfull
+ * Returns negative value if the parsing fails. Positive output is line number of error
+ */
+int parse_http_request(struct http_request_t * output, char * recv, int recv_length) {
+	int index = 0;
+	output->method = NULL;
+	output->method_length = 0;
+	output->path = NULL;
+	output->path_length = 0;
+	output->fragment = NULL;
+	output->fragment_length = 0;
+	output->parameters[0] = NULL;
+	output->parameters_size = 0;
+	output->headers[0] = NULL;
+	output->headers_size = 0;
+	output->body = NULL;
+	output->body_size = NULL;
+
+	enum {METHOD, PATH, FRAGMENT, PARAMETERS, AFTER_URI, HEADERS, BODY} state = METHOD;
+	int i = 0;
+	for (i = 0; i < recv_length; i++) {
+		if (state == METHOD) {
+			if (recv[i] == ' ') {
+				if (i <= 1) {
+					return -__LINE__;
+				}
+				recv[i] = '\0';
+				output->method = &recv[0];
+				output->method_length = i;
+				output->path = &recv[i + 1];
+				state = PATH;
+			}
+			continue;
+		}
+
+		int state_allows_uri_encoding = (state == PATH || state == FRAGMENT || state == PARAMETERS);
+
+		if (state_allows_uri_encoding && recv[i] == '%') {
+			if (recv[i+1] == '2' && recv[i+2] == '0') {
+				recv[i] = ' ';
+			} else if (recv[i+1] == '2' && recv[i+2] == '1') { // %21
+				recv[i] = '!';
+			} else if (recv[i+1] == '2' && recv[i+2] == '2') { // %22
+				recv[i] = '"';
+			} else if (recv[i+1] == '2' && recv[i+2] == '4') { // %24
+				recv[i] = '%';
+			} else if (recv[i+1] == '2' && recv[i+2] == '7') { // %27
+				recv[i] = '\'';
+			} else if (recv[i+1] == '2' && recv[i+2] == '8') { // %28
+				recv[i] = '(';
+			} else if (recv[i+1] == '2' && recv[i+2] == '9') { // %29
+				recv[i] = ')';
+			} else if (recv[i+1] == '2' && recv[i+2] == 'C') { // %2C
+				recv[i] = ',';
+			} else if (recv[i+1] == '2' && recv[i+2] == 'D') { // %2D
+				recv[i] = '-';
+			} else if (recv[i+1] == '2' && recv[i+2] == 'E') { // %2E
+				recv[i] = '.';
+			} else if (recv[i+1] == '3' && recv[i+2] == 'C') { // %3C
+				recv[i] = '<';
+			} else if (recv[i+1] == '3' && recv[i+2] == 'E') { // %3E
+				recv[i] = '>';
+			} else if (recv[i+1] == '3' && recv[i+2] == 'D') { // %3D
+				recv[i] = '=';
+			} else if (recv[i+1] == '4' && recv[i+2] == '0') { // %40
+				recv[i] = '@';
+			} else if (recv[i+1] == '6' && recv[i+2] == '0') { // %5F
+				recv[i] = '_';
+			} else if (recv[i+1] == '6' && recv[i+2] == '0') { // %60
+				recv[i] = '`';
+			} else if (recv[i+1] == '7' && recv[i+2] == 'E') { // %7E
+				recv[i] = '~';
+			} else if (recv[i+1] == '7' && recv[i+2] == 'F') { // %7F
+				recv[i] = ' '; // Close enough
+			} else if (recv[i+1] == '8' && recv[i+2] == '2') { // %82
+				recv[i] = ','; // Close enough
+			} else {
+				recv[i] = '?'; // Fallback
+			}
+			// Move buffer data to remove the "explanation bytes" of the URI encoding
+			for (int j = i + 1; j < recv_length - 2; j++) {
+				if (recv[j + 2] == ' ' || recv[j + 2] == '\0' || recv[j + 2] == '\r' || recv[j + 2] == '\n') {
+					recv[j] = ' ';
+					recv[j + 1] = ' ';
+					break;
+				}
+				recv[j] = recv[j + 2];
+			}
+			continue;
+		}
+
+		if (state == PATH) {
+			if (recv[i] == '#') {
+				state = FRAGMENT;
+				recv[i] = '\0';
+				output->path_length = (&recv[i]) - output->path;
+				output->fragment = &recv[i];
+				continue;
+			}
+			if (recv[i] == '?') {
+				state = PARAMETERS;
+				recv[i] = '\0';
+				output->path_length = (&recv[i]) - output->path;
+				output->fragment = NULL;
+				output->fragment_length = 0;
+				output->parameters[0] = NULL;
+				output->parameters_size = 0;
+				continue;
+			}
+			if (recv[i] == ' ') {
+				recv[i] = '\0';
+				output->path_length = (&recv[i]) - output->path;
+				output->fragment = NULL;
+				output->fragment_length = 0;
+				output->parameters[0] = NULL;
+				output->parameters_size = 0;
+				state = AFTER_URI;
+				continue;
+			}
+			continue;
+		}
+
+		if (state == FRAGMENT) {
+			if (recv[i] == '?') {
+				state = PARAMETERS;
+				recv[i] = '\0';
+				output->fragment_length = (&recv[i]) - output->fragment;
+				output->parameters[0] = NULL;
+				output->parameters_size = 0;
+				output->path_length = i - output->method_length - 1;
+				continue;
+			}
+			if (recv[i] == ' ') {
+				recv[i] = '\0';
+				output->fragment_length = (&recv[i]) - output->fragment;
+				output->parameters[0] = NULL;
+				output->parameters_size = 0;
+				state = AFTER_URI;
+				continue;
+			}
+			continue;
+		}
+
+		if (state == PARAMETERS) {
+			if (recv[i] == ' ') {
+				recv[i] = '\0';
+				state = AFTER_URI;
+				continue;
+			}
+			if (output->parameters[0] == NULL && recv[i] != '&') {
+				output->parameters[0] = &recv[i];
+				output->parameters_size = 1;
+			}
+			if (recv[i] == '&') {
+				recv[i] = '\0';
+				if (recv[i + 1] != ' ') {
+					if (output->parameters_size + 1 < MAX_HTTP_HEADER_POINTERS) {
+						output->parameters[output->parameters_size] = &recv[i + 1];
+						output->parameters_size += 1;
+					}
+				}
+			}
+			continue;
+		}
+
+		if (state == AFTER_URI) {
+			if (recv[i] == '\0') {
+				return -__LINE__;
+			}
+			if (recv[i] == '\r' && recv[i + 1] == '\n') {
+				i += 1;
+				state = HEADERS;
+				output->headers[0] = NULL;
+				output->headers_size = 0;
+			}
+			continue;
+		}
+
+		if (state == HEADERS) {
+			if (output->headers[0] == NULL && recv[i] != '\r') {
+				output->headers[0] = &recv[i];
+				output->headers_size = 1;
+			}
+			if (recv[i] == '\r' && recv[i+1] == '\n') {
+				recv[i] = '\0';
+				i += 1;
+				if (recv[i + 1] != '\r') {
+					if (output->headers_size + 1 < MAX_HTTP_HEADER_POINTERS) {
+						output->headers[output->headers_size] = &recv[i + 1];
+						output->headers_size += 1;
+					}
+				} else {
+					i += 3;
+					state = BODY;
+					break;
+				}
+			}
+			continue;
+		}
+
+		return -__LINE__;
+	}
+	if (state != BODY) {
+		return -__LINE__;
+	}
+	if (i >= recv_length) {
+		output->body = NULL;
+		output->body_size = 0;
+		// No body
+		return 1;
+	}
+	output->body = &recv[i];
+	output->body_size = recv_length - i;
+	return 1;
+}
+
 int process_and_reply(
-	char * recv,
-	size_t recv_size,
+	struct http_request_t * request,
 	/* OUT */ char * reply,
 	size_t reply_max_size,
 	/* OUT */ size_t * reply_length
 ) {
-	*reply_length = snprintf(
-		reply,
-		reply_max_size,
-		"Hi!"
-	);
-	return 1;
+	if (strcmp(request->method, "GET") == 0) {
+		if (strcmp(request->path, "/") == 0) {
+			return -1;
+		}
+		return -2;
+	}
+	if (strcmp(request->method, "POST") == 0) {
+		return -3;
+	}
+	return -4;
 }
 
 int main(int argn, char ** argc) {
@@ -119,6 +360,8 @@ int main(int argn, char ** argc) {
 	print_timestamp(1, 1);
     printf("Info: Waiting for connection at port %I64d\n", (int64_t) portnumber);
 
+	struct http_request_t http;
+
     while (1) {
 		if (listen(sock, 10) == SOCKET_ERROR) {
 			print_timestamp(1, 1);
@@ -137,70 +380,46 @@ int main(int argn, char ** argc) {
 			return 1;
 		}
 
-		int64_t recv_length = recv(msg_sock, recv_buffer, sizeof(recv_buffer), 0);
+		int recv_length = recv(msg_sock, recv_buffer, sizeof(recv_buffer), 0);
 
-		// Check empty data as they are exploratory requests
-		if (recv_length == 0) {
+		// Ignore empty connections (might jsut be exploratory requests)
+		if (recv_length <= 0) {
 			closesocket(msg_sock);
 			continue;
 		}
+
+		// printf("----------RAW START\n%s\n----------RAW END\n", recv_buffer);
 
 		print_timestamp(1, 1);
 		printf("Info: Connection %I64d received %I64d bytes from \"%s\" at port %d\n", ++count, (int64_t) recv_length, inet_ntoa(client_addr.sin_addr), htons(client_addr.sin_port));
 
-		int is_get_request_method = does_first_start_with_second(recv_buffer, "GET /");
-		int is_post_request_method = does_first_start_with_second(recv_buffer, "POST /");
-		int is_put_request_method = does_first_start_with_second(recv_buffer, "PUT /");
-		int is_head_request_method = does_first_start_with_second(recv_buffer, "HEAD /");
-		int is_delete_request_method = does_first_start_with_second(recv_buffer, "DELETE /");
-		int is_patch_request_method = does_first_start_with_second(recv_buffer, "PATCH /");
-		int is_options_request_method = does_first_start_with_second(recv_buffer, "OPTIONS /");
-
-		if (
-			recv_length <= 6 ||
-			(
-				!is_get_request_method &&
-				!is_post_request_method &&
-				!is_put_request_method &&
-				!is_head_request_method &&
-				!is_delete_request_method &&
-				!is_patch_request_method &&
-				!is_options_request_method
-			)
-		) {
+		int parse_veredict = parse_http_request(&http, recv_buffer, recv_length);
+		if (parse_veredict <= 0) {
 			print_timestamp(1, 1);
-			printf("Info: Client sent unexpected HTTP packet beggining\n");
-
-			buffer_size = snprintf(
-				buffer,
-				OUTPUT_BUFFER_SIZE,
-				"HTTP/1.1 405 Method Not Allowed\r\n"
-				"Content-Type: text/html; charset=UTF-8\r\n"
-				"Content-Length: %d\r\n"
-				"Connection: close\r\n"
-				"\r\n"
-				"%s",
-				snprintf(
-					content_buffer,
-					sizeof(content_buffer),
-					"%s\r\n",
-					"Unknown HTTP request method"
-				),
-				content_buffer
-			);
-
-			send(
-				msg_sock,
-				buffer,
-				buffer_size,
-				0
-			);
+			printf("Info: Failed at parsing HTTP request: parse_http_request returned %d\n", parse_veredict);
 			closesocket(msg_sock);
 			continue;
 		}
 
+		/*
+		printf("----------\n");
+		printf("Method: %s\n", http.method);
+		printf("Path: %s\n", http.path);
+		printf("Fragment: %s\n", http.fragment);
+		printf("Parameters: %d\n", http.parameters_size);
+		for (int i = 0; i < http.parameters_size; i++) {
+			printf("    %s\n", http.parameters[i]);
+		}
+		printf("Headers: %d\n", http.headers_size);
+		for (int i = 0; i < http.headers_size; i++) {
+			printf("    %s\n", http.headers[i]);
+		}
+		printf("Body size: %d\n", http.body_size);
+		printf("----------\n");
+		*/
+
 		size_t content_length = 0;
-		int result = process_and_reply(recv_buffer, recv_length, content_buffer, sizeof(content_buffer), &content_length);
+		int result = process_and_reply(&http, content_buffer, sizeof(content_buffer), &content_length);
 		if (result > 0) {
 			buffer_size = snprintf(
 				buffer,
@@ -234,7 +453,7 @@ int main(int argn, char ** argc) {
 				snprintf(
 					content_buffer,
 					sizeof(content_buffer),
-					"call to \"process_and_reply\" returned %d\r\n",
+					"Call to \"process_and_reply\" returned %d\r\n",
 					result
 				),
 				content_buffer
