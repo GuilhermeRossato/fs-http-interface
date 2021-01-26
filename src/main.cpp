@@ -16,7 +16,7 @@
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "d3d9.lib")
 
-#define DEBUG
+// #define DEBUG
 
 #ifdef DEBUG
 	#define ASSERT(explanation, condition) if (!(condition)) { printf("Assertation failed at %s:%d\nIncoherence at: %s\n", __FILE__, __LINE__, explanation); exit(__LINE__); }
@@ -31,6 +31,24 @@
 #include "./does_first_start_with_second.cpp"
 #include "./separate_string_by_char.cpp"
 #include "./str_index_of.cpp"
+
+int is_path_directory(const char* path) {
+    FILE *f = fopen(path, "r+");
+    if (f) {
+        fclose(f);
+        return 0;
+    }
+    return errno == EISDIR;
+}
+
+int is_path_file(char * path) {
+	FILE *file;
+    if ((file = fopen(path,"r")) == NULL) {
+		return 0;
+	}
+	fclose(file);
+	return 1;
+}
 
 #define MAX_HTTP_HEADER_POINTERS 128
 
@@ -48,6 +66,49 @@ struct http_request_t {
 	char * body;
 	int body_size;
 } http_request_t;
+
+char * get_parameter_from_request(struct http_request_t * request, const char * parameter) {
+	for (int i = 0; i < request->parameters_size; i++) {
+		if (does_first_start_with_second(request->parameters[i], parameter)) {
+			int s = strlen(parameter);
+			if (s < 128 && parameter[s] == '\0' && request->parameters[i][s] == '=') {
+				return ((char *) request->parameters[i]) + s + 1;
+			}
+		}
+	}
+	return NULL;
+}
+
+/**
+ * Returns positive for success
+ * Returns negative for errors
+ * Returns zero for not found
+ */
+int process_and_reply(
+	struct http_request_t * request,
+	/* OUT */ char * reply,
+	size_t reply_max_size,
+	/* OUT */ size_t * reply_length
+) {
+	char * file = get_parameter_from_request(request, "file");
+
+	if (strcmp(request->method, "GET") == 0) {
+		if (strcmp(request->path, "/") == 0) {
+			return 0;
+		}
+
+		if (strcmp(request->path, "/file/exists/") == 0) {
+			if (file == NULL) {
+				*reply_length = snprintf(reply, reply_max_size, "Error: Missing \"file\" parameter");
+				return 1;
+			}
+			int veredict = !is_path_directory(file) && is_path_file(file);
+			*reply_length = snprintf(reply, reply_max_size, "%d", veredict);
+			return 1;
+		}
+	}
+	return 0;
+}
 
 /**
  * Parses an HTTP request and writes the parts in the output
@@ -270,28 +331,6 @@ int parse_http_request(struct http_request_t * output, char * recv, int recv_len
 	return 1;
 }
 
-/**
- * Returns positive for success
- * Returns negative for errors
- * Returns zero for not found
- */
-int process_and_reply(
-	struct http_request_t * request,
-	/* OUT */ char * reply,
-	size_t reply_max_size,
-	/* OUT */ size_t * reply_length
-) {
-	if (strcmp(request->method, "GET") == 0) {
-		if (strcmp(request->path, "/") == 0) {
-			return 0;
-		}
-		if (strcmp(request->path, "/file/") == 0) {
-			*reply_length = snprintf(reply, reply_max_size, "Welcome to my website!");
-		}
-	}
-	return 0;
-}
-
 int main(int argn, char ** argc) {
 	char * portnumber_str = argn >= 2 ? argc[2] : DEFAULT_PORT;
 
@@ -443,17 +482,27 @@ int main(int argn, char ** argc) {
 				buffer_size++;
 			}
 			buffer[buffer_size < OUTPUT_BUFFER_SIZE ? buffer_size : OUTPUT_BUFFER_SIZE - 1] = '\0';
+		} else if (result == 0) {
+
+			buffer_size = snprintf(
+				buffer,
+				OUTPUT_BUFFER_SIZE,
+				"HTTP/1.1 404 Not Found\r\n"
+				"Content-Type: text/html; charset=UTF-8\r\n"
+				"Content-Length: 0\r\n"
+				"Connection: close\r\n"
+				"\r\n"
+			);
 		} else {
 			buffer_size = snprintf(
 				buffer,
 				OUTPUT_BUFFER_SIZE,
-				"HTTP/1.1 %s\r\n"
+				"HTTP/1.1 500 Internal Server Error\r\n"
 				"Content-Type: text/html; charset=UTF-8\r\n"
 				"Content-Length: %d\r\n"
 				"Connection: close\r\n"
 				"\r\n"
 				"%s",
-				result == 0 ? "404 Not Found" : "500 Internal Server Error",
 				snprintf(
 					content_buffer,
 					sizeof(content_buffer),
