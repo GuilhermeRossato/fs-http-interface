@@ -192,7 +192,7 @@ int process_and_reply(
 				*reply_length = snprintf(reply, reply_max_size, "Error: Missing \"path\" parameter");
 				return 1;
 			}
-			if (is_path_file(path)) {
+			if (!is_path_file(path)) {
 				return 0;
 			}
 			int64_t size = get_file_size(path);
